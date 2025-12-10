@@ -72,7 +72,7 @@ pub async fn fetch_avatar(
     Ok((body_colors, items))
 }
 
-#[derive(Debug, FromRow)]
+#[derive(Debug, FromRow, Clone)]
 pub struct ItemAsset {
     pub item_type: i8,
     pub location: Option<String>,

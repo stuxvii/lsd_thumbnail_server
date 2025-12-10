@@ -17,7 +17,7 @@ use crate::utility::{
     replace_transparent_with_color,
 };
 
-const PROGRAM_NAME: &str = "LSDBLOX Avatar Server 1.0";
+const PROGRAM_NAME: &str = "LSDBLOX Avatar Server 1.1";
 const BASE_HTTP_PATH: &str = "/srv/http";
 
 const DEFAULT_MESH_BYTES: &[u8] = include_bytes!("default.obj");
@@ -38,13 +38,26 @@ pub struct StaticMeshes {
     pub tshirt: Option<tobj::Mesh>,
 }
 
-fn avatar_render(accessories: Vec<ItemAsset>, colors: BodyColors, static_meshes: &StaticMeshes,) -> String {
+struct HexBodyColors {
+    head: u32,
+    trso: u32,
+    larm: u32,
+    rarm: u32,
+    lleg: u32,
+    rleg: u32,
+}
+
+fn render_scene(
+    accessories: Vec<ItemAsset>,
+    colors: HexBodyColors,
+    static_meshes: &StaticMeshes,
+) -> String {
     let now: DateTime<Utc> = Utc::now();
     println!("[{}] STARTED RENDER", now.format("%d-%m-%Y %H:%M:%S"));
+
     let yaw: f32 = 1.0;
     let pitch: f32 = 0.4;
     let radius: f32 = 10.0;
-
     let target = vec3(-0.25, -1.75, -1.0);
     let world_up = vec3(0.0, 1.0, 0.0);
 
@@ -63,19 +76,12 @@ fn avatar_render(accessories: Vec<ItemAsset>, colors: BodyColors, static_meshes:
         ..Default::default()
     });
 
-    let trso_color = from_brickcolor(colors.trso).unwrap_or(0xff0000);
-    let lleg_color = from_brickcolor(colors.lleg).unwrap_or(0xff0000);
-    let rleg_color = from_brickcolor(colors.rleg).unwrap_or(0xff0000);
-    let rarm_color = from_brickcolor(colors.rarm).unwrap_or(0xff0000);
-    let larm_color = from_brickcolor(colors.larm).unwrap_or(0xff0000);
-    let head_color = from_brickcolor(colors.head).unwrap_or(0xff0000);
-
     let face_loc = std::path::Path::new("src/face.png");
     let mut face_texture = match process_img(face_loc) {
         Ok((w, h, bytes)) => Texture2D::from_rgba8(
             w as u16,
             h as u16,
-            &replace_transparent_with_color(bytes, head_color),
+            &replace_transparent_with_color(bytes, colors.head),
         ),
         Err(e) => {
             eprintln!("Default face couldn't be loaded: {}", e);
@@ -90,11 +96,11 @@ fn avatar_render(accessories: Vec<ItemAsset>, colors: BodyColors, static_meshes:
     let lleg_mesh_data: Option<tobj::Mesh> = static_meshes.lleg.clone();
     let trso_mesh_data: Option<tobj::Mesh> = static_meshes.trso.clone();
 
-    let mut rarm_texture = Texture2D::from_rgba8(1, 1, &from_hex(rarm_color));
-    let mut larm_texture = Texture2D::from_rgba8(1, 1, &from_hex(larm_color));
-    let mut rleg_texture = Texture2D::from_rgba8(1, 1, &from_hex(rleg_color));
-    let mut lleg_texture = Texture2D::from_rgba8(1, 1, &from_hex(lleg_color));
-    let mut trso_texture = Texture2D::from_rgba8(1, 1, &from_hex(trso_color));
+    let mut rarm_texture = Texture2D::from_rgba8(1, 1, &from_hex(colors.rarm));
+    let mut larm_texture = Texture2D::from_rgba8(1, 1, &from_hex(colors.larm));
+    let mut rleg_texture = Texture2D::from_rgba8(1, 1, &from_hex(colors.rleg));
+    let mut lleg_texture = Texture2D::from_rgba8(1, 1, &from_hex(colors.lleg));
+    let mut trso_texture = Texture2D::from_rgba8(1, 1, &from_hex(colors.trso));
 
     let mut tshirt_meshes = Vec::new();
 
@@ -107,7 +113,7 @@ fn avatar_render(accessories: Vec<ItemAsset>, colors: BodyColors, static_meshes:
         match accessory.item_type {
             9 => {
                 // HAT
-                let tex_path = accessory.texture_path.unwrap_or_default();
+                let tex_path = accessory.texture_path.clone().unwrap_or_default();
                 if let Ok(m) = load_resources_and_mesh(&loc, &tex_path) {
                     draw_mesh(&m);
                 }
@@ -126,54 +132,53 @@ fn avatar_render(accessories: Vec<ItemAsset>, colors: BodyColors, static_meshes:
                     face_texture = Texture2D::from_rgba8(
                         w as u16,
                         h as u16,
-                        &replace_transparent_with_color(bytes, head_color),
+                        &replace_transparent_with_color(bytes, colors.head),
                     );
                 }
             }
             6 => {
-                // PANTS (texture applied to legs)
+                // PANTS
                 let tmp_path = format!("{}/{}", BASE_HTTP_PATH, loc);
                 if let Ok((w, h, bytes)) = process_img(std::path::Path::new(&tmp_path)) {
                     rleg_texture = Texture2D::from_rgba8(
                         w as u16,
                         h as u16,
-                        &replace_transparent_with_color(bytes.clone(), rleg_color),
+                        &replace_transparent_with_color(bytes.clone(), colors.rleg),
                     );
                     lleg_texture = Texture2D::from_rgba8(
                         w as u16,
                         h as u16,
-                        &replace_transparent_with_color(bytes, lleg_color),
+                        &replace_transparent_with_color(bytes, colors.lleg),
                     );
                 }
             }
             5 => {
-                // SHIRT (texture applied to torso/arms)
+                // SHIRT
                 let tmp_path = format!("{}/{}", BASE_HTTP_PATH, loc);
                 if let Ok((w, h, bytes)) = process_img(std::path::Path::new(&tmp_path)) {
                     trso_texture = Texture2D::from_rgba8(
                         w as u16,
                         h as u16,
-                        &replace_transparent_with_color(bytes.clone(), trso_color),
+                        &replace_transparent_with_color(bytes.clone(), colors.trso),
                     );
                     rarm_texture = Texture2D::from_rgba8(
                         w as u16,
                         h as u16,
-                        &replace_transparent_with_color(bytes.clone(), rarm_color),
+                        &replace_transparent_with_color(bytes.clone(), colors.rarm),
                     );
                     larm_texture = Texture2D::from_rgba8(
                         w as u16,
                         h as u16,
-                        &replace_transparent_with_color(bytes, larm_color),
+                        &replace_transparent_with_color(bytes, colors.larm),
                     );
                 }
             }
             4 => {
-                // T-SHIRT (decal on torso)
+                // T-SHIRT
                 let tmp_path = format!("{}/{}", BASE_HTTP_PATH, loc);
                 if let Ok((w, h, bytes)) = process_img(std::path::Path::new(&tmp_path)) {
                     if let Some(tshirt_mesh) = static_meshes.tshirt.clone() {
                         let texture = Texture2D::from_rgba8(w as u16, h as u16, &bytes);
-
                         let final_mesh = process_mesh(&tshirt_mesh, &texture);
                         tshirt_meshes.push(final_mesh);
                     }
@@ -190,27 +195,21 @@ fn avatar_render(accessories: Vec<ItemAsset>, colors: BodyColors, static_meshes:
     if let Some(mesh) = trso_mesh_data {
         draw_mesh(&process_mesh(&mesh, &trso_texture));
     }
-
     if let Some(mesh) = rarm_mesh_data {
         draw_mesh(&process_mesh(&mesh, &rarm_texture));
     }
-
     if let Some(mesh) = larm_mesh_data {
         draw_mesh(&process_mesh(&mesh, &larm_texture));
     }
-
     if let Some(mesh) = head_mesh_data {
         draw_mesh(&process_mesh(&mesh, &face_texture));
     }
-
     if let Some(mesh) = lleg_mesh_data {
         draw_mesh(&process_mesh(&mesh, &lleg_texture));
     }
-
     if let Some(mesh) = rleg_mesh_data {
         draw_mesh(&process_mesh(&mesh, &rleg_texture));
     }
-
     for mesh in tshirt_meshes {
         draw_mesh(&mesh);
     }
@@ -225,216 +224,6 @@ fn avatar_render(accessories: Vec<ItemAsset>, colors: BodyColors, static_meshes:
     };
 
     let flipped_bytes = image::imageops::flip_vertical(&image).into_vec();
-
-    let mut png_data = Vec::new();
-    {
-        let mut encoder = Encoder::new(&mut png_data, width, height);
-        encoder.set_color(ColorType::Rgba);
-        encoder.set_depth(BitDepth::Eight);
-        match encoder.write_header() {
-            Ok(mut writer) => {
-                if let Err(e) = writer.write_image_data(&flipped_bytes) {
-                    eprintln!("Failed to write PNG data: {}", e);
-                    return String::new();
-                }
-            }
-            Err(e) => {
-                eprintln!("Failed to write PNG header: {}", e);
-                return String::new();
-            }
-        }
-    }
-
-    base64::engine::general_purpose::STANDARD.encode(png_data)
-}
-
-fn accessory_render(accessory: &ItemAsset, static_meshes: &StaticMeshes,) -> String {
-    let now: DateTime<Utc> = Utc::now();
-    println!("[{}] STARTED RENDER", now.format("%d-%m-%Y %H:%M:%S"));
-    let yaw: f32 = 1.0;
-    let pitch: f32 = 0.4;
-    let radius: f32 = 10.0;
-
-    let target = vec3(-0.25, -1.75, -1.0);
-    let world_up = vec3(0.0, 1.0, 0.0);
-
-    let new_pos = vec3(
-        radius * yaw.cos() * pitch.cos(),
-        radius * pitch.sin(),
-        radius * yaw.sin() * pitch.cos(),
-    ) + target;
-
-    clear_background(Color::with_alpha(&Color::from_hex(0x000000), 0.0));
-
-    set_camera(&Camera3D {
-        position: new_pos,
-        up: world_up,
-        target,
-        ..Default::default()
-    });
-
-    let trso_color = 0xbfbfbf;
-    let lleg_color = 0xbfbfbf;
-    let rleg_color = 0xbfbfbf;
-    let rarm_color = 0xbfbfbf;
-    let larm_color = 0xbfbfbf;
-    let head_color = 0xbfbfbf;
-
-    let face_loc = std::path::Path::new("src/face.png");
-    let mut face_texture = match process_img(face_loc) {
-        Ok((w, h, bytes)) => Texture2D::from_rgba8(
-            w as u16,
-            h as u16,
-            &replace_transparent_with_color(bytes, head_color),
-        ),
-        Err(e) => {
-            eprintln!("Default face couldn't be loaded: {}", e);
-            Texture2D::from_rgba8(1, 1, &[255, 0, 0, 255])
-        }
-    };
-
-    let mut head_mesh_data: Option<tobj::Mesh> = static_meshes.head.clone();
-    let rarm_mesh_data: Option<tobj::Mesh> = static_meshes.rarm.clone();
-    let larm_mesh_data: Option<tobj::Mesh> = static_meshes.larm.clone();
-    let rleg_mesh_data: Option<tobj::Mesh> = static_meshes.rleg.clone();
-    let lleg_mesh_data: Option<tobj::Mesh> = static_meshes.lleg.clone();
-    let trso_mesh_data: Option<tobj::Mesh> = static_meshes.trso.clone();
-
-    let mut rarm_texture = Texture2D::from_rgba8(1, 1, &from_hex(rarm_color));
-    let mut larm_texture = Texture2D::from_rgba8(1, 1, &from_hex(larm_color));
-    let mut rleg_texture = Texture2D::from_rgba8(1, 1, &from_hex(rleg_color));
-    let mut lleg_texture = Texture2D::from_rgba8(1, 1, &from_hex(lleg_color));
-    let mut trso_texture = Texture2D::from_rgba8(1, 1, &from_hex(trso_color));
-
-    let mut tshirt_meshes = Vec::new();
-
-    let loc = match &accessory.location {
-        Some(l) => l,
-        None => {eprintln!("Yo chief, this accessory has no location! I am just gonna stop here. It was probably moderated."); return String::new();}
-    };
-
-    match accessory.item_type {
-        9 => {
-            // HAT
-            let tex_path = accessory.texture_path.clone().unwrap_or_default();
-            if let Ok(m) = load_resources_and_mesh(&loc, &tex_path) {
-                draw_mesh(&m);
-            }
-        }
-        8 => {
-            // HEAD SWAP
-            let mesh_full_path = format!("{}/{}", BASE_HTTP_PATH, loc);
-            if let Some(new_mesh) = load_static_mesh(&mesh_full_path) {
-                head_mesh_data = Some(new_mesh);
-            }
-        }
-        7 => {
-            // FACE TEXTURE
-            let tmp_path = format!("{}/{}", BASE_HTTP_PATH, loc);
-            if let Ok((w, h, bytes)) = process_img(std::path::Path::new(&tmp_path)) {
-                face_texture = Texture2D::from_rgba8(
-                    w as u16,
-                    h as u16,
-                    &replace_transparent_with_color(bytes, head_color),
-                );
-            }
-        }
-        6 => {
-            // PANTS (texture applied to legs)
-            let tmp_path = format!("{}/{}", BASE_HTTP_PATH, loc);
-            if let Ok((w, h, bytes)) = process_img(std::path::Path::new(&tmp_path)) {
-                rleg_texture = Texture2D::from_rgba8(
-                    w as u16,
-                    h as u16,
-                    &replace_transparent_with_color(bytes.clone(), rleg_color),
-                );
-                lleg_texture = Texture2D::from_rgba8(
-                    w as u16,
-                    h as u16,
-                    &replace_transparent_with_color(bytes, lleg_color),
-                );
-            }
-        }
-        5 => {
-            // SHIRT (texture applied to torso/arms)
-            let tmp_path = format!("{}/{}", BASE_HTTP_PATH, loc);
-            if let Ok((w, h, bytes)) = process_img(std::path::Path::new(&tmp_path)) {
-                trso_texture = Texture2D::from_rgba8(
-                    w as u16,
-                    h as u16,
-                    &replace_transparent_with_color(bytes.clone(), trso_color),
-                );
-                rarm_texture = Texture2D::from_rgba8(
-                    w as u16,
-                    h as u16,
-                    &replace_transparent_with_color(bytes.clone(), rarm_color),
-                );
-                larm_texture = Texture2D::from_rgba8(
-                    w as u16,
-                    h as u16,
-                    &replace_transparent_with_color(bytes, larm_color),
-                );
-            }
-        }
-        4 => {
-            // T-SHIRT (decal on torso)
-            let tmp_path = format!("{}/{}", BASE_HTTP_PATH, loc);
-            if let Ok((w, h, bytes)) = process_img(std::path::Path::new(&tmp_path)) {
-                if let Some(tshirt_mesh) = static_meshes.tshirt.clone() {
-                    let texture = Texture2D::from_rgba8(w as u16, h as u16, &bytes);
-
-                    let final_mesh = process_mesh(&tshirt_mesh, &texture);
-                    tshirt_meshes.push(final_mesh);
-                }
-            }
-        }
-        _ => {
-            eprintln!("Item Type {} not implemented.", accessory.item_type)
-        }
-    }
-    
-
-    gl_use_default_material();
-
-    if let Some(mesh) = trso_mesh_data {
-        draw_mesh(&process_mesh(&mesh, &trso_texture));
-    }
-
-    if let Some(mesh) = rarm_mesh_data {
-        draw_mesh(&process_mesh(&mesh, &rarm_texture));
-    }
-
-    if let Some(mesh) = larm_mesh_data {
-        draw_mesh(&process_mesh(&mesh, &larm_texture));
-    }
-
-    if let Some(mesh) = head_mesh_data {
-        draw_mesh(&process_mesh(&mesh, &face_texture));
-    }
-
-    if let Some(mesh) = lleg_mesh_data {
-        draw_mesh(&process_mesh(&mesh, &lleg_texture));
-    }
-
-    if let Some(mesh) = rleg_mesh_data {
-        draw_mesh(&process_mesh(&mesh, &rleg_texture));
-    }
-
-    for mesh in tshirt_meshes {
-        draw_mesh(&mesh);
-    }
-
-    let img_data = get_screen_data();
-    let width = img_data.width as u32;
-    let height = img_data.height as u32;
-
-    let Some(image) = image::RgbaImage::from_raw(width, height, img_data.bytes) else {
-        eprintln!("Failed to create image from screen data.");
-        return String::new();
-    };
-
-    let flipped_bytes = image::imageops::flip_vertical(&image).into_vec();
-
     let mut png_data = Vec::new();
     {
         let mut encoder = Encoder::new(&mut png_data, width, height);
@@ -624,7 +413,16 @@ async fn main() {
         if let Ok(work) = rx_work.try_recv() {
             match work.job_type {
                 1=> {
-                    let result_b64 = avatar_render(work.accessories, work.bodycolors.unwrap_or_default(), &static_meshes,);
+                    let body_colors = work.bodycolors.unwrap_or_default();
+                    let hex_body_colors: HexBodyColors = HexBodyColors { 
+                        head: from_brickcolor(body_colors.head).unwrap_or_default(), 
+                        trso: from_brickcolor(body_colors.trso).unwrap_or_default(), 
+                        larm: from_brickcolor(body_colors.larm).unwrap_or_default(), 
+                        rarm: from_brickcolor(body_colors.rarm).unwrap_or_default(), 
+                        lleg: from_brickcolor(body_colors.lleg).unwrap_or_default(), 
+                        rleg: from_brickcolor(body_colors.rleg).unwrap_or_default()
+                    };
+                    let result_b64 = render_scene(work.accessories, hex_body_colors, &static_meshes);
                     let now: DateTime<Utc> = Utc::now();
                     println!("[{}] SUCCESS", now.format("%d-%m-%Y %H:%M:%S"));
                     let now: DateTime<Utc> = Utc::now();
@@ -632,15 +430,16 @@ async fn main() {
                     let _ = work.response_sender.send(result_b64);
                 },
                 2 => {
-                    let accessory = match work.accessories.first() {
-                        Some(a) => a,
+                    let accessory: ItemAsset = match work.accessories.first() {
+                        Some(a) => a.clone(),
                         None => {
                             eprintln!("What the fuck? ok this should never happen this is so fucking weird bro HELPPPPPPP I'M GONNA EXPLODE!!!");
                             unreachable!();
                         }
                     };
-                    
-                    let result_b64 = accessory_render(accessory, &static_meshes,);
+
+                    let colors: HexBodyColors = HexBodyColors { trso: 0xbfbfbf, head: 0xbfbfbf, lleg: 0xbfbfbf, larm: 0xbfbfbf, rarm: 0xbfbfbf, rleg: 0xbfbfbf };
+                    let result_b64 = render_scene(vec![accessory], colors, &static_meshes);
                     let now: DateTime<Utc> = Utc::now();
                     println!("[{}] SUCCESS", now.format("%d-%m-%Y %H:%M:%S"));
                     let now: DateTime<Utc> = Utc::now();
