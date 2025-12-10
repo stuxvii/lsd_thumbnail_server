@@ -193,7 +193,7 @@ pub fn process_mesh(mesh: &tobj::Mesh, texture: &Texture2D) -> macroquad::models
     let texcoords: Vec<Vec2> = mesh
         .texcoords
         .chunks(2)
-        .map(|x| Vec2::new(x[0], x[1]))
+        .map(|x| Vec2::new(x[0], 1.0 - x[1]))
         .collect();
 
     let normals: Vec<Vec3> = mesh
