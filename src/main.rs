@@ -1,32 +1,31 @@
 use base64::Engine;
+use chrono::{DateTime, Utc};
 use dotenv::dotenv;
 use macroquad::prelude::*;
-use memory_stats::memory_stats;
 use png::{BitDepth, ColorType, Encoder};
 use rouille::{post_input, router};
 use sqlx::mysql::MySqlPool;
 use std::sync::mpsc::{Sender, channel};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, thread};
-use chrono::{DateTime, Utc};
 
 mod utility;
 use crate::utility::{
     BodyColors, ItemAsset, fetch_accessories_info, fetch_avatar, from_brickcolor, from_hex,
-    load_resources_and_mesh, load_static_mesh_from_bytes, load_static_mesh, process_img, process_mesh,
-    replace_transparent_with_color,
+    load_resources_and_mesh, load_static_mesh, load_static_mesh_from_bytes, process_img,
+    process_mesh, replace_transparent_with_color,
 };
 
 const PROGRAM_NAME: &str = "LSDBLOX Avatar Server 1.1";
 const BASE_HTTP_PATH: &str = "/srv/http";
 
 const DEFAULT_MESH_BYTES: &[u8] = include_bytes!("default.obj");
-const RARM_MESH_BYTES: &[u8]    = include_bytes!("rightarm.obj");
-const LARM_MESH_BYTES: &[u8]    = include_bytes!("leftarm.obj");
-const RLEG_MESH_BYTES: &[u8]    = include_bytes!("rightleg.obj");
-const LLEG_MESH_BYTES: &[u8]    = include_bytes!("leftleg.obj");
-const TRSO_MESH_BYTES: &[u8]    = include_bytes!("torso.obj");
-const TSHIRT_MESH_BYTES: &[u8]  = include_bytes!("tshirt.obj");
+const RARM_MESH_BYTES: &[u8] = include_bytes!("rightarm.obj");
+const LARM_MESH_BYTES: &[u8] = include_bytes!("leftarm.obj");
+const RLEG_MESH_BYTES: &[u8] = include_bytes!("rightleg.obj");
+const LLEG_MESH_BYTES: &[u8] = include_bytes!("leftleg.obj");
+const TRSO_MESH_BYTES: &[u8] = include_bytes!("torso.obj");
+const TSHIRT_MESH_BYTES: &[u8] = include_bytes!("tshirt.obj");
 
 pub struct StaticMeshes {
     pub head: Option<tobj::Mesh>,
@@ -271,7 +270,7 @@ async fn main() {
     println!("Licensed under the GPLv3.\n");
 
     let (tx_work, rx_work) = channel::<RenderRequest>();
-    
+
     let static_meshes = StaticMeshes {
         head: load_static_mesh_from_bytes("default", DEFAULT_MESH_BYTES),
         rarm: load_static_mesh_from_bytes("rightarm", RARM_MESH_BYTES),
@@ -285,8 +284,14 @@ async fn main() {
     thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
 
-        let db_password = env::var("DB_PASSWORD").expect("DB_PASSWORD not set");
-        let url = format!("mysql://usr:{}@localhost:3306/appdb", db_password);
+        let db_password = env::var("DB_PASSWORD").expect("DB_PASSWORD not set in .env file");
+        let db_username = env::var("DB_USERNAME").expect("DB_USERNAME not set in .env file");
+        let db_address = env::var("DB_ADDRESS").expect("DB_ADDRESS not set in .env file");
+        let db_dbname = env::var("DB_DBNAME").expect("DB_DBNAME not set in .env file");
+        let url = format!(
+            "mysql://{}:{}@{}:3306/{}",
+            db_username, db_password, db_address, db_dbname
+        );
 
         let pool = rt.block_on(async {
             MySqlPool::connect(&url)
@@ -295,7 +300,10 @@ async fn main() {
         });
 
         let now: DateTime<Utc> = Utc::now();
-        println!("[{}] STARTED SERVER ON PORT 6767 (unfunny)", now.format("%d-%m-%Y %H:%M:%S"));
+        println!(
+            "[{}] STARTED SERVER ON PORT 6767 (unfunny)",
+            now.format("%d-%m-%Y %H:%M:%S")
+        );
 
         rouille::start_server("127.0.0.1:6767", move |request| {
             router!(request,
@@ -412,33 +420,43 @@ async fn main() {
     loop {
         if let Ok(work) = rx_work.try_recv() {
             match work.job_type {
-                1=> {
+                1 => {
                     let body_colors = work.bodycolors.unwrap_or_default();
-                    let hex_body_colors: HexBodyColors = HexBodyColors { 
-                        head: from_brickcolor(body_colors.head).unwrap_or_default(), 
-                        trso: from_brickcolor(body_colors.trso).unwrap_or_default(), 
-                        larm: from_brickcolor(body_colors.larm).unwrap_or_default(), 
-                        rarm: from_brickcolor(body_colors.rarm).unwrap_or_default(), 
-                        lleg: from_brickcolor(body_colors.lleg).unwrap_or_default(), 
-                        rleg: from_brickcolor(body_colors.rleg).unwrap_or_default()
+                    let hex_body_colors: HexBodyColors = HexBodyColors {
+                        head: from_brickcolor(body_colors.head).unwrap_or_default(),
+                        trso: from_brickcolor(body_colors.trso).unwrap_or_default(),
+                        larm: from_brickcolor(body_colors.larm).unwrap_or_default(),
+                        rarm: from_brickcolor(body_colors.rarm).unwrap_or_default(),
+                        lleg: from_brickcolor(body_colors.lleg).unwrap_or_default(),
+                        rleg: from_brickcolor(body_colors.rleg).unwrap_or_default(),
                     };
-                    let result_b64 = render_scene(work.accessories, hex_body_colors, &static_meshes);
+                    let result_b64 =
+                        render_scene(work.accessories, hex_body_colors, &static_meshes);
                     let now: DateTime<Utc> = Utc::now();
                     println!("[{}] SUCCESS", now.format("%d-%m-%Y %H:%M:%S"));
                     let now: DateTime<Utc> = Utc::now();
                     println!("[{}] SENDING...", now.format("%d-%m-%Y %H:%M:%S"));
                     let _ = work.response_sender.send(result_b64);
-                },
+                }
                 2 => {
                     let accessory: ItemAsset = match work.accessories.first() {
                         Some(a) => a.clone(),
                         None => {
-                            eprintln!("What the fuck? ok this should never happen this is so fucking weird bro HELPPPPPPP I'M GONNA EXPLODE!!!");
+                            eprintln!(
+                                "What the fuck? ok this should never happen this is so fucking weird bro HELPPPPPPP I'M GONNA EXPLODE!!!"
+                            );
                             unreachable!();
                         }
                     };
 
-                    let colors: HexBodyColors = HexBodyColors { trso: 0xbfbfbf, head: 0xbfbfbf, lleg: 0xbfbfbf, larm: 0xbfbfbf, rarm: 0xbfbfbf, rleg: 0xbfbfbf };
+                    let colors: HexBodyColors = HexBodyColors {
+                        trso: 0xbfbfbf,
+                        head: 0xbfbfbf,
+                        lleg: 0xbfbfbf,
+                        larm: 0xbfbfbf,
+                        rarm: 0xbfbfbf,
+                        rleg: 0xbfbfbf,
+                    };
                     let result_b64 = render_scene(vec![accessory], colors, &static_meshes);
                     let now: DateTime<Utc> = Utc::now();
                     println!("[{}] SUCCESS", now.format("%d-%m-%Y %H:%M:%S"));
@@ -457,35 +475,23 @@ async fn main() {
                 .as_secs_f64();
             last_request_time = current_time - work.request_time;
             let now: DateTime<Utc> = Utc::now();
-            println!("[{}] FINISHED -- TOOK {}s.", now.format("%d-%m-%Y %H:%M:%S"), last_request_time);
-
+            println!(
+                "[{}] FINISHED -- TOOK {}s.",
+                now.format("%d-%m-%Y %H:%M:%S"),
+                last_request_time
+            );
         }
 
         set_default_camera();
         clear_background(BLACK);
 
-        if let Some(usage) = memory_stats() {
-            draw_text(
-                format!("MEM: {}K", usage.physical_mem / 1024).as_str(),
-                10.0,
-                16.0,
-                24.0,
-                WHITE,
-            );
-            draw_text(
-                format!(
-                    "SWAP: {}K",
-                    usage.virtual_mem / 1024
-                )
-                .as_str(),
-                10.0,
-                32.0,
-                24.0,
-                WHITE,
-            );
-        } else {
-            println!("Couldn't get the current memory usage :(");
-        }
+        draw_text(
+            "Listening for requests",
+            10.0,
+            16.0,
+            24.0,
+            WHITE,
+        );
 
         next_frame().await;
     }

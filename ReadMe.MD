@@ -1,39 +1,46 @@
-You're gonna need an actual proper MariaDB server and preferably an instance of LSDBLOX running for you to be using this.<br>
-Either change up the connection url thing in the main.rs or just have your database have the username "usr" from the get go.<br>
-Put your password in a file at the root of this directory (the one this readme is in) called `.env` in this format:
-<br>
-<br>
-```
-DB_PASSWORD=HiThisIsMyEpicDataBasePasswordHopeNoOneReadsThisOops!
-```
-<br>
-Alright that's done? Is that okay? Double check it. Done? Alright, trust ya. &nbsp;&nbsp;&nbsp;&nbsp;: &nbsp;&nbsp; )
-<br>
-Soooooo  you can send it requests via HTTP using something like cURL (if ur 31337 h4x0r) or Insomnia (if ur normie) and it will return PNG data encoded in base64! Yay! Just decode it and put it into a file or whatever.
-<br>
-<br>
-Wait what's that? You don't know what to even send to this server? Just send url encoded html form data bro. How could you not have figured that out?
-<br>
-<br>
-What url encoded html form data? Well here's some example data:
-<br>
-<br>
+# LSD Thumbnail (& Avatar) Server
 
-```
-id: 42
-job_type: 2
-```
-<hr>
+## How to use
+Send a POST request to 127.0.0.1:6767 with url encoded form data.
+<br>
+Example:
+<br>
+`curl -X POST http://127.0.0.1:6767 -H "Content-Type: application/x-www-form-urlencoded" -d "id=42&job_type=2"`
+<br>
+And badabim bada boom in no time you're getting shiny new PNG data encoded in Base64 containing your render.
 
-> What does any of this mean bro??
+## How to setup
+To get this up and running no issues, you'll need to connect to a MySQL/MariaDB server, which for that you are gonna need to fill in the .env.example file with your database credentials. Don't worry. I will not scoop them up or steal them :&nbsp;)
+<br>
+After that, you're gonna need some data. If you didn't get the clue yet, this server is built to run alongside the [LSD](https://github.com/stuxvii/lsd) webserver. Just pick up the sql schema file from there and insert some data.
 
-Alright so the id? That's just an id to look up shi in a data base. ok? Remember that? the database you setup earlier? you did that right? you at least inserted some data in it right? Gosh darn it bro. How are you gonna render shit you don't even have in your server you dumb ass.
-<hr>
+## Request types
+1. Avatar
+2. Accessory (OBJ)
 
-> For fucks sake. I mean, thanks for explaining the id part)? What is the job_type tho?
+## Issues
+Lag when window is unfocused
+<br>
+I have no clue about it, maybe change your window manager?
 
-Well for the job type there are currently two (2) job types. avatars, and accessories.
-So, for the first job type, that is number 1 (one) please understand that this type is used for calling only and only exclusively the job that will go ahead in the program, fetch information from the database related to the avatar. Yes job type 1 will render the avatar dickhead.
-And job type 2 renders accessories. Take in mind this only supports OBJs and PNGs, so no STLs or STDs or roblox meshes or any of that bullshit bro.
-
-Are we done here? Can i go sleep? Actually I don't fucking care about your opinion. I made this software. I did all the hard work YOU go read it and look what it does you fucker. Good night.
+## Basic inner workings
+### Startup
+- Assign receiver and renderer threads
+- Load body part OBJ files into memory
+- Connect to database in receiver thread
+- Start listening on port 6767 and wait for requests
+### On request received
+#### Receiver
+- Parse input (return 404 if fail)
+- Fetch data from parsed ID like accessories, and bodycolors in the case of Avatar requests
+- Pass on data to the renderer thread
+#### Renderer
+- Determine type
+- Determine data to be rendered
+- Request a render with that data (and hardcoded camera settings)
+- ???
+- Get screen data as PNG
+- Encode in Base64 and return
+#### On render finished
+- If not empty, return Base64 to client who sent request.
+- RINSE REPEAT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
